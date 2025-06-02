@@ -30,17 +30,20 @@ if st.button("Send"):
         response = requests.post("https://your-backend-url.com/audio", json={"audio": b64_audio})
         query = "[Voice message]"
     elif user_input:
-        response = requests.post("https://your-backend-url.com/text", json={"query": user_input})
+        response = requests.post("http://127.0.0.1:5000", json={"query": user_input})
         query = user_input
     else:
         st.warning("Please provide text or audio input.")
         response = None
 
     if response and response.ok:
-        answer = response.json().get("answer", "No response.")
-        st.session_state.history.append({"user": query, "bot": answer})
-    elif response:
-        st.error("Something went wrong. Please try again.")
+        try:
+            st.write("Response content (debug):", response.text)  # Add this for debugging
+            answer = response.json().get("answer", "No response.")
+            st.session_state.history.append({"user": query, "bot": answer})
+        except Exception as e:
+            st.error(f"Error parsing response JSON: {e}")
+            st.text(response.text)  # Show raw response
 
 # --- Display Chat ---
 for idx, chat in enumerate(st.session_state.history):
