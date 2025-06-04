@@ -26,6 +26,7 @@
       box-shadow: 0 0 4px rgba(0,0,0,0.1);
     }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <h1>University Chatbot</h1>
@@ -88,5 +89,6 @@
       }
     }
   </script>
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
