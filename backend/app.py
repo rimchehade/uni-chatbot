@@ -3,7 +3,15 @@ from flask import Flask, request, jsonify
 from model_utils import process_text_question, process_audio_question
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='../frontend', static_url_path='')
+
+@app.route('/')
+def index():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def static_files(path):
+    return send_from_directory(app.static_folder, path)
 
 @app.route("/text", methods=["POST"])
 def handle_text():
