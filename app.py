@@ -1,87 +1,78 @@
-import streamlit as st
-import requests
-from fpdf import FPDF
-from docx import Document
-import base64
-import io
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import torch
+import librosa
+import soundfile as sf
+import os
+from transformers import pipeline
+from your_model_module import (
+    transcribe_audio,
+    swer_question,
+    save_answer_to_pdf,
+    save_conversation_to_docx,
+    bookmark_answer,
+    save_bookmarks_to_file
+)
 
-st.set_page_config(page_title="Uni Chat", layout="centered")
-st.title("🎓 Uni Chat – Lebanese Universities Chatbot")
+app = Flask(__name__)
+CORS(app)  # Enable CORS for frontend communication
 
-if "history" not in st.session_state:
-    st.session_state.history = []
+# Load Whisper ASR
+asr_pipeline = pipeline(
+    "automatic-speech-recognition",
+    model="openai/whisper-small",
+    tokenizer="openai/whisper-small",
+    generate_kwargs={"language": "en"},
+    return_timestamps=False
+)
 
-if "bookmarks" not in st.session_state:
-    st.session_state.bookmarks = []
+@app.route("/text", methods=["POST"])
+def handle_text():
+    try:
+        data = request.get_json()
+        question = data.get("question", "")
 
-# --- Audio Recording ---
-st.subheader("Ask via Voice or Text")
-audio_data = st.file_uploader("Record or upload audio", type=["wav", "mp3", "m4a"])
+        if not question:
+            return jsonify({"error": "No question provided"}), 400
 
-user_input = st.text_input("Or type your question:")
+        question, answer, follow_up, decision = swer_question(question)
 
-# --- Send Query ---
-if st.button("Send"):
-    query = None
+        return jsonify({
+            "question": question,
+            "answer": answer,
+            "follow_up": follow_up,
+            "decision": decision
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    if audio_data:
-        # Assume your backend accepts audio as base64
-        b64_audio = base64.b64encode(audio_data.read()).decode("utf-8")
-        response = requests.post("https://your-backend-url.com/audio", json={"audio": b64_audio})
-        query = "[Voice message]"
-    elif user_input:
-        response = requests.post("http://127.0.0.1:5000", json={"query": user_input})
-        query = user_input
-    else:
-        st.warning("Please provide text or audio input.")
-        response = None
+@app.route("/audio", methods=["POST"])
+def handle_audio():
+    try:
+        if 'audio' not in request.files:
+            return jsonify({"error": "No audio file provided."}), 400
 
-    if response and response.ok:
-        try:
-            st.write("Response content (debug):", response.text)  # Add this for debugging
-            answer = response.json().get("answer", "No response.")
-            st.session_state.history.append({"user": query, "bot": answer})
-        except Exception as e:
-            st.error(f"Error parsing response JSON: {e}")
-            st.text(response.text)  # Show raw response
+        file = request.files['audio']
+        filepath = os.path.join("temp_audio.wav")
+        file.save(filepath)
 
-# --- Display Chat ---
-for idx, chat in enumerate(st.session_state.history):
-    st.markdown(f"**You:** {chat['user']}")
-    st.markdown(f"**Uni Chat:** {chat['bot']}")
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("🔖 Bookmark", key=f"bookmark_{idx}"):
-            st.session_state.bookmarks.append(chat)
-    with col2:
-        st.download_button("⬇️ Export",
-                           data=chat['bot'],
-                           file_name=f"uni_chat_{idx}.txt",
-                           mime="text/plain",
-                           key=f"export_{idx}")
+        # Convert to 16kHz mono WAV for Whisper
+        audio, sr = librosa.load(filepath, sr=16000)
+        sf.write("converted_audio.wav", audio, 16000)
 
-# --- Export Full Chat ---
-st.markdown("### 📄 Export Full Chat")
+        result = asr_pipeline("converted_audio.wav")
+        question = result["text"]
 
-col_pdf, col_docx = st.columns(2)
+        question, answer, follow_up, decision = swer_question(question)
 
-with col_pdf:
-    if st.button("Export as PDF"):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        for chat in st.session_state.history:
-            pdf.multi_cell(0, 10, f"You: {chat['user']}\nUni Chat: {chat['bot']}\n")
-        buffer = io.BytesIO()
-        pdf.output(buffer)
-        st.download_button("Download PDF", data=buffer.getvalue(), file_name="chat_history.pdf", mime="application/pdf")
+        return jsonify({
+            "transcription": question,
+            "answer": answer,
+            "follow_up": follow_up,
+            "decision": decision
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-with col_docx:
-    if st.button("Export as Word"):
-        doc = Document()
-        for chat in st.session_state.history:
-            doc.add_paragraph(f"You: {chat['user']}")
-            doc.add_paragraph(f"Uni Chat: {chat['bot']}")
-        buffer = io.BytesIO()
-        doc.save(buffer)
-        st.download_button("Download Word Doc", data=buffer.getvalue(), file_name="chat_history.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
