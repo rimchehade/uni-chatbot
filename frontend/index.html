@@ -1,1 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>University Chatbot</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #f8f8f8;
+    }
+    input, button, textarea {
+      width: 100%;
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      font-size: 1rem;
+    }
+    #response {
+      background: white;
+      padding: 1rem;
+      margin-top: 1rem;
+      border-radius: 8px;
+      box-shadow: 0 0 4px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body>
+  <h1>University Chatbot</h1>
 
+  <input id="question" type="text" placeholder="Ask your question here...">
+  <button onclick="submitText()">Submit Question</button>
+
+  <h3>Or Record Audio</h3>
+  <button onclick="startRecording()">Start Recording</button>
+  <button onclick="stopRecording()">Stop & Submit</button>
+  <p id="recording-status"></p>
+
+  <div id="response"></div>
+
+  <script>
+    const backendURL = "http://localhost:5000"; // replace with your deployed backend URL
+    let mediaRecorder;
+    let audioChunks = [];
+
+    async function submitText() {
+      const question = document.getElementById("question").value;
+      const res = await fetch(`${backendURL}/text`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question })
+      });
+      const data = await res.json();
+      document.getElementById("response").innerText = data.answer || "No response.";
+    }
+
+    async function startRecording() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append("audio", blob, "recording.webm");
+
+        const res = await fetch(`${backendURL}/audio`, {
+          method: "POST",
+          body: formData
+        });
+
+        const data = await res.json();
+        document.getElementById("response").innerText =
+          `Transcribed: ${data.question}\nAnswer: ${data.answer}`;
+      };
+
+      mediaRecorder.start();
+      document.getElementById("recording-status").innerText = "Recording...";
+    }
+
+    function stopRecording() {
+      if (mediaRecorder) {
+        mediaRecorder.stop();
+        document.getElementById("recording-status").innerText = "Processing...";
+      }
+    }
+  </script>
+</body>
+</html>
