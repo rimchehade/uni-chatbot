@@ -32,7 +32,7 @@ def transcribe_audio(audio_path):
     sf.write("converted.wav", audio, 16000)
     result = asr_pipeline("converted.wav")
     return result["text"]
-
+    
 
 # ========== Initialize Embeddings and Vectorstore ==========
 embedding_model = HuggingFaceEmbeddings(
@@ -96,6 +96,7 @@ Follow-up question:
 )
 
 follow_up_chain = LLMChain(llm=llm, prompt=follow_up_prompt)
+
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
 
 qa_chain = ConversationalRetrievalChain.from_llm(
@@ -107,7 +108,7 @@ qa_chain = ConversationalRetrievalChain.from_llm(
 
 
 # ========== Core Chatbot Function ==========
-def swer_question(question):
+def answer_question(question):
     result = qa_chain.invoke({"question": question})
     answer = result["answer"]
     sources = result.get("source_documents", [])
@@ -135,12 +136,12 @@ Answer:
 
 # ========== Public Interfaces ==========
 def handle_text_input(question):
-    return swer_question(question)
+    return answer_question(question)
 
 
 def handle_audio_upload(audio_path):
     question = transcribe_audio(audio_path)
-    return swer_question(question)
+    return answer_question(question)
 
 
 def save_answer_to_pdf(question, answer, filename="answer.pdf"):
